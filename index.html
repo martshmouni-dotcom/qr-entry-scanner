@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>QR Entry Scanner</title>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 5px 0 20px;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: auto;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 18px;
+    }
+
+    #reader {
+      width: 100%;
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    #result {
+      margin-top: 15px;
+      padding: 20px;
+      border-radius: 12px;
+      background: white;
+      min-height: 100px;
+      font-size: 18px;
+    }
+
+    .valid {
+      background: #dff5df !important;
+    }
+
+    .used {
+      background: #ffdede !important;
+    }
+
+    .invalid {
+      background: #ffe9cc !important;
+    }
+
+    button {
+      width: 100%;
+      padding: 16px;
+      margin-top: 15px;
+      border: none;
+      border-radius: 8px;
+      background: #222;
+      color: white;
+      font-size: 18px;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h1>QR Entry Scanner</h1>
+
+  <input
+    id="scannerName"
+    type="text"
+    value="Gate 1"
+    placeholder="Gate / Scanner name"
+  >
+
+  <div id="reader"></div>
+
+  <div id="result">
+    Press START CAMERA to begin.
+  </div>
+
+  <button id="startButton" onclick="startCamera()">
+    START CAMERA
+  </button>
+
+  <button
+    id="nextButton"
+    class="hidden"
+    onclick="startCamera()"
+  >
+    SCAN NEXT QR
+  </button>
+
+</div>
+
+
+<script>
+
+const API_URL =
+  "https://script.google.com/macros/s/AKfycbzSBSiKYiSJnTE5oToTSrlaScKQ-KK56ZDbRKYjZGZsQehqqARSYn2JozopfVmVkWQG/exec";
+
+let scanner = null;
+let running = false;
+let processing = false;
+
+
+/* =========================
+   START CAMERA
+========================= */
+
+async function startCamera() {
+
+  if (running) return;
+
+  processing = false;
+
+  document.getElementById("result").className = "";
+
+  document.getElementById("result").innerHTML =
+    "📷 Starting camera...";
+
+  document.getElementById("startButton")
+    .classList.add("hidden");
+
+  document.getElementById("nextButton")
+    .classList.add("hidden");
+
+
+  try {
+
+    if (!scanner) {
+      scanner =
+        new Html5Qrcode("reader");
+    }
+
+
+    /*
+     * Ask for available cameras.
+     */
+
+    const cameras =
+      await Html5Qrcode.getCameras();
+
+
+    if (!cameras || cameras.length === 0) {
+
+      throw new Error(
+        "No camera was found."
+      );
+
+    }
+
+
+    /*
+     * Prefer the rear camera.
+     */
+
+    let cameraId =
+      cameras[0].id;
+
+    for (const camera of cameras) {
+
+      const label =
+        (camera.label || "").toLowerCase();
+
+      if (
+        label.includes("back") ||
+        label.includes("rear") ||
+        label.includes("environment")
+      ) {
+
+        cameraId = camera.id;
+        break;
+
+      }
+
+    }
+
+
+    await scanner.start(
+
+      cameraId,
+
+      {
+        fps: 10,
+
+        qrbox: {
+          width: 250,
+          height: 250
+        },
+
+        aspectRatio: 1.0
+
+      },
+
+      function(decodedText) {
+
+        processQR(decodedText);
+
+      },
+
+      function(errorMessage) {
+
+        // Normal scanning errors are ignored.
+
+      }
+
+    );
+
+
+    running = true;
+
+
+    document.getElementById("result").innerHTML =
+      "📷 Camera ready<br><br>" +
+      "Point the camera at the QR code.";
+
+  }
+
+  catch(error) {
+
+    console.error(error);
+
+    running = false;
+
+    document.getElementById("result")
+      .className = "invalid";
+
+    document.getElementById("result").innerHTML =
+      "<h3>❌ CAMERA ERROR</h3>" +
+      "<p>" +
+      escapeHtml(
+        error.message || error
+      ) +
+      "</p>";
+
+    document.getElementById("startButton")
+      .classList.remove("hidden");
+
+  }
+
+}
+
+
+/* =========================
+   PROCESS QR
+========================= */
+
+async function processQR(qrId) {
+
+  if (processing) return;
+
+  processing = true;
+
+  document.getElementById("result")
+    .className = "";
+
+  document.getElementById("result").innerHTML =
+    "⏳ Checking QR code...";
+
+
+  await stopCamera();
+
+
+  const scannerName =
+    document
+      .getElementById("scannerName")
+      .value
+      .trim() || "Unknown";
+
+
+  try {
+
+    /*
+     * Send QR to Apps Script.
+     */
+
+    const response =
+      await fetch(API_URL, {
+
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "text/plain;charset=utf-8"
+        },
+
+        body: JSON.stringify({
+
+          qrId: qrId,
+
+          scannerName:
+            scannerName
+
+        })
+
+      });
+
+
+    const data =
+      await response.json();
+
+
+    showResult(data);
+
+  }
+
+  catch(error) {
+
+    console.error(error);
+
+    document.getElementById("result")
+      .className = "invalid";
+
+    document.getElementById("result").innerHTML =
+      "<h3>❌ CONNECTION ERROR</h3>" +
+      "<p>" +
+      "Could not connect to the entry system." +
+      "</p>";
+
+    document.getElementById("nextButton")
+      .classList.remove("hidden");
+
+    processing = false;
+
+  }
+
+}
+
+
+/* =========================
+   STOP CAMERA
+========================= */
+
+async function stopCamera() {
+
+  if (!scanner || !running) {
+    return;
+  }
+
+  try {
+
+    await scanner.stop();
+
+  }
+
+  catch(error) {
+
+    console.log(error);
+
+  }
+
+  running = false;
+
+}
+
+
+/* =========================
+   SHOW RESULT
+========================= */
+
+function showResult(data) {
+
+  const result =
+    document.getElementById("result");
+
+
+  if (data.status === "VALID") {
+
+    result.className = "valid";
+
+    result.innerHTML =
+      "<h2>✅ VALID</h2>" +
+
+      "<h3>" +
+      escapeHtml(data.name) +
+      "</h3>" +
+
+      "<p>QR ID: " +
+      escapeHtml(data.qrId) +
+      "</p>" +
+
+      "<p><strong>ENTRY ACCEPTED</strong></p>" +
+
+      "<p>" +
+      escapeHtml(data.scanTime) +
+      "</p>";
+
+  }
+
+
+  else if (data.status === "USED") {
+
+    result.className = "used";
+
+    result.innerHTML =
+      "<h2>❌ ALREADY USED</h2>" +
+
+      "<h3>" +
+      escapeHtml(data.name) +
+      "</h3>" +
+
+      "<p>QR ID: " +
+      escapeHtml(data.qrId) +
+      "</p>" +
+
+      "<p>First used:</p>" +
+
+      "<strong>" +
+      escapeHtml(data.scanTime) +
+      "</strong>" +
+
+      "<p>Scanner: " +
+      escapeHtml(data.scannedBy) +
+      "</p>";
+
+  }
+
+
+  else {
+
+    result.className = "invalid";
+
+    result.innerHTML =
+      "<h2>❌ INVALID QR</h2>" +
+
+      "<p>" +
+      "This QR code is not registered." +
+      "</p>";
+
+  }
+
+
+  document.getElementById("nextButton")
+    .classList.remove("hidden");
+
+  processing = false;
+
+}
+
+
+/* =========================
+   HTML ESCAPING
+========================= */
+
+function escapeHtml(text) {
+
+  if (
+    text === null ||
+    text === undefined
+  ) {
+
+    return "";
+
+  }
+
+  return String(text)
+
+    .replace(/&/g, "&amp;")
+
+    .replace(/</g, "&lt;")
+
+    .replace(/>/g, "&gt;")
+
+    .replace(/"/g, "&quot;")
+
+    .replace(/'/g, "&#039;");
+
+}
+
+</script>
+
+</body>
+</html>
