@@ -153,38 +153,20 @@ async function startCamera() {
   document.getElementById("nextButton")
     .classList.add("hidden");
 
-
   try {
 
     if (!scanner) {
-      scanner =
-        new Html5Qrcode("reader");
+      scanner = new Html5Qrcode("reader");
     }
-
-
-    /*
-     * Ask for available cameras.
-     */
 
     const cameras =
       await Html5Qrcode.getCameras();
 
-
     if (!cameras || cameras.length === 0) {
-
-      throw new Error(
-        "No camera was found."
-      );
-
+      throw new Error("No camera was found.");
     }
 
-
-    /*
-     * Prefer the rear camera.
-     */
-
-    let cameraId =
-      cameras[0].id;
+    let cameraId = cameras[0].id;
 
     for (const camera of cameras) {
 
@@ -196,14 +178,11 @@ async function startCamera() {
         label.includes("rear") ||
         label.includes("environment")
       ) {
-
         cameraId = camera.id;
         break;
-
       }
 
     }
-
 
     await scanner.start(
 
@@ -218,7 +197,6 @@ async function startCamera() {
         },
 
         aspectRatio: 1.0
-
       },
 
       function(decodedText) {
@@ -229,15 +207,13 @@ async function startCamera() {
 
       function(errorMessage) {
 
-        // Normal scanning errors are ignored.
+        // Normal QR scanning errors are ignored.
 
       }
 
     );
 
-
     running = true;
-
 
     document.getElementById("result").innerHTML =
       "📷 Camera ready<br><br>" +
@@ -257,14 +233,11 @@ async function startCamera() {
     document.getElementById("result").innerHTML =
       "<h3>❌ CAMERA ERROR</h3>" +
       "<p>" +
-      escapeHtml(
-        error.message || error
-      ) +
+      escapeHtml(error.message || error) +
       "</p>";
 
     document.getElementById("startButton")
       .classList.remove("hidden");
-
   }
 
 }
@@ -286,9 +259,7 @@ async function processQR(qrId) {
   document.getElementById("result").innerHTML =
     "⏳ Checking QR code...";
 
-
   await stopCamera();
-
 
   const scannerName =
     document
@@ -296,62 +267,123 @@ async function processQR(qrId) {
       .value
       .trim() || "Unknown";
 
+  checkQRWithJSONP(qrId, scannerName);
 
-  try {
-
-    /*
-     * Send QR to Apps Script.
-     */
-
-    const response =
-      await fetch(API_URL, {
-
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "text/plain;charset=utf-8"
-        },
-
-        body: JSON.stringify({
-
-          qrId: qrId,
-
-          scannerName:
-            scannerName
-
-        })
-
-      });
+}
 
 
-    const data =
-      await response.json();
+/* =========================
+   GOOGLE APPS SCRIPT
+   JSONP REQUEST
+========================= */
 
+function checkQRWithJSONP(qrId, scannerName) {
+
+  const callbackName =
+    "qrCallback_" +
+    Date.now() +
+    "_" +
+    Math.floor(Math.random() * 100000);
+
+  const script =
+    document.createElement("script");
+
+  let finished = false;
+
+  window[callbackName] = function(data) {
+
+    finished = true;
 
     showResult(data);
 
+    cleanup();
+
+  };
+
+
+  function cleanup() {
+
+    if (script.parentNode) {
+      script.parentNode.removeChild(script);
+    }
+
+    try {
+      delete window[callbackName];
+    }
+    catch (e) {
+      window[callbackName] = undefined;
+    }
+
   }
 
-  catch(error) {
 
-    console.error(error);
+  script.onerror = function() {
+
+    if (finished) return;
+
+    finished = true;
+
+    cleanup();
 
     document.getElementById("result")
       .className = "invalid";
 
     document.getElementById("result").innerHTML =
       "<h3>❌ CONNECTION ERROR</h3>" +
-      "<p>" +
-      "Could not connect to the entry system." +
-      "</p>";
+      "<p>Could not connect to the entry system.</p>" +
+      "<p>Please check your internet connection.</p>";
 
     document.getElementById("nextButton")
       .classList.remove("hidden");
 
     processing = false;
 
-  }
+  };
+
+
+  const url =
+    API_URL +
+    "?action=scan" +
+    "&qrId=" +
+    encodeURIComponent(qrId) +
+    "&scannerName=" +
+    encodeURIComponent(scannerName) +
+    "&callback=" +
+    encodeURIComponent(callbackName) +
+    "&t=" +
+    Date.now();
+
+
+  script.src = url;
+
+  document.body.appendChild(script);
+
+
+  /*
+   * Timeout protection
+   */
+
+  setTimeout(function() {
+
+    if (finished) return;
+
+    finished = true;
+
+    cleanup();
+
+    document.getElementById("result")
+      .className = "invalid";
+
+    document.getElementById("result").innerHTML =
+      "<h3>❌ CONNECTION TIMEOUT</h3>" +
+      "<p>No response from the entry system.</p>";
+
+    document.getElementById("nextButton")
+      .classList.remove("hidden");
+
+    processing = false;
+
+  }, 15000);
 
 }
 
@@ -391,6 +423,23 @@ function showResult(data) {
 
   const result =
     document.getElementById("result");
+
+
+  if (!data || !data.status) {
+
+    result.className = "invalid";
+
+    result.innerHTML =
+      "<h2>❌ SYSTEM ERROR</h2>" +
+      "<p>Invalid response from entry system.</p>";
+
+    document.getElementById("nextButton")
+      .classList.remove("hidden");
+
+    processing = false;
+
+    return;
+  }
 
 
   if (data.status === "VALID") {
@@ -452,9 +501,7 @@ function showResult(data) {
     result.innerHTML =
       "<h2>❌ INVALID QR</h2>" +
 
-      "<p>" +
-      "This QR code is not registered." +
-      "</p>";
+      "<p>This QR code is not registered.</p>";
 
   }
 
@@ -477,23 +524,15 @@ function escapeHtml(text) {
     text === null ||
     text === undefined
   ) {
-
     return "";
-
   }
 
   return String(text)
-
     .replace(/&/g, "&amp;")
-
     .replace(/</g, "&lt;")
-
     .replace(/>/g, "&gt;")
-
     .replace(/"/g, "&quot;")
-
     .replace(/'/g, "&#039;");
-
 }
 
 </script>
