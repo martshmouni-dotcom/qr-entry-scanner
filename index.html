@@ -2,538 +2,257 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <title>QR Entry Scanner</title>
 
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
     body {
+      font-family: Arial, sans-serif;
+      text-align: center;
       margin: 0;
       padding: 20px;
-      font-family: Arial, sans-serif;
       background: #f4f4f4;
-      text-align: center;
     }
 
     h1 {
-      margin: 5px 0 20px;
-    }
-
-    .container {
-      max-width: 500px;
-      margin: auto;
-    }
-
-    input {
-      width: 100%;
-      padding: 14px;
-      margin-bottom: 15px;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      font-size: 18px;
+      margin-bottom: 10px;
     }
 
     #reader {
       width: 100%;
+      max-width: 500px;
+      margin: 20px auto;
       background: white;
-      border-radius: 12px;
-      overflow: hidden;
     }
 
     #result {
-      margin-top: 15px;
+      max-width: 500px;
+      margin: 20px auto;
       padding: 20px;
-      border-radius: 12px;
       background: white;
-      min-height: 100px;
-      font-size: 18px;
+      border-radius: 10px;
+      font-size: 20px;
+      font-weight: bold;
     }
 
     .valid {
-      background: #dff5df !important;
+      background: #d4edda !important;
+      color: #155724;
     }
 
     .used {
-      background: #ffdede !important;
+      background: #f8d7da !important;
+      color: #721c24;
     }
 
     .invalid {
-      background: #ffe9cc !important;
+      background: #fff3cd !important;
+      color: #856404;
     }
 
-    button {
-      width: 100%;
-      padding: 16px;
-      margin-top: 15px;
-      border: none;
-      border-radius: 8px;
-      background: #222;
-      color: white;
-      font-size: 18px;
+    .error {
+      background: #f8d7da !important;
+      color: #721c24;
     }
 
-    .hidden {
-      display: none;
+    .name {
+      font-size: 24px;
+      margin-top: 10px;
+    }
+
+    .qr {
+      font-size: 16px;
+      margin-top: 8px;
+      font-weight: normal;
     }
   </style>
 </head>
 
 <body>
 
-<div class="container">
-
   <h1>QR Entry Scanner</h1>
-
-  <input
-    id="scannerName"
-    type="text"
-    value="Gate 1"
-    placeholder="Gate / Scanner name"
-  >
 
   <div id="reader"></div>
 
   <div id="result">
-    Press START CAMERA to begin.
+    Waiting for QR code...
   </div>
-
-  <button id="startButton" onclick="startCamera()">
-    START CAMERA
-  </button>
-
-  <button
-    id="nextButton"
-    class="hidden"
-    onclick="startCamera()"
-  >
-    SCAN NEXT QR
-  </button>
-
-</div>
 
 
 <script>
 
-const API_URL =
-  "https://script.google.com/macros/s/AKfycbzSBSiKYiSJnTE5oToTSrlaScKQ-KK56ZDbRKYjZGZsQehqqARSYn2JozopfVmVkWQG/exec";
+const BACKEND_URL =
+  "https://script.google.com/macros/s/AKfycbwz1tZha63DSsln38Z1MFSOv01qsJV3fB4X-jF6MB2lwJXcSAJVjMVW82qfZbXeY9ZqBQ/exec";
 
-let scanner = null;
-let running = false;
+const SCANNER_NAME = "Gate1";
+
 let processing = false;
 
 
-/* =========================
-   START CAMERA
-========================= */
+function showResult(type, title, name, qrId) {
 
-async function startCamera() {
+  const result = document.getElementById("result");
 
-  if (running) return;
+  result.className = type;
 
-  processing = false;
+  result.innerHTML = `
+    <div>${title}</div>
 
-  document.getElementById("result").className = "";
-
-  document.getElementById("result").innerHTML =
-    "📷 Starting camera...";
-
-  document.getElementById("startButton")
-    .classList.add("hidden");
-
-  document.getElementById("nextButton")
-    .classList.add("hidden");
-
-  try {
-
-    if (!scanner) {
-      scanner = new Html5Qrcode("reader");
+    ${
+      name
+        ? `<div class="name">${name}</div>`
+        : ""
     }
 
-    const cameras =
-      await Html5Qrcode.getCameras();
-
-    if (!cameras || cameras.length === 0) {
-      throw new Error("No camera was found.");
+    ${
+      qrId
+        ? `<div class="qr">QR: ${qrId}</div>`
+        : ""
     }
-
-    let cameraId = cameras[0].id;
-
-    for (const camera of cameras) {
-
-      const label =
-        (camera.label || "").toLowerCase();
-
-      if (
-        label.includes("back") ||
-        label.includes("rear") ||
-        label.includes("environment")
-      ) {
-        cameraId = camera.id;
-        break;
-      }
-
-    }
-
-    await scanner.start(
-
-      cameraId,
-
-      {
-        fps: 10,
-
-        qrbox: {
-          width: 250,
-          height: 250
-        },
-
-        aspectRatio: 1.0
-      },
-
-      function(decodedText) {
-
-        processQR(decodedText);
-
-      },
-
-      function(errorMessage) {
-
-        // Normal QR scanning errors are ignored.
-
-      }
-
-    );
-
-    running = true;
-
-    document.getElementById("result").innerHTML =
-      "📷 Camera ready<br><br>" +
-      "Point the camera at the QR code.";
-
-  }
-
-  catch(error) {
-
-    console.error(error);
-
-    running = false;
-
-    document.getElementById("result")
-      .className = "invalid";
-
-    document.getElementById("result").innerHTML =
-      "<h3>❌ CAMERA ERROR</h3>" +
-      "<p>" +
-      escapeHtml(error.message || error) +
-      "</p>";
-
-    document.getElementById("startButton")
-      .classList.remove("hidden");
-  }
-
+  `;
 }
 
 
-/* =========================
-   PROCESS QR
-========================= */
-
-async function processQR(qrId) {
+async function checkQR(qrId) {
 
   if (processing) return;
 
   processing = true;
 
-  document.getElementById("result")
-    .className = "";
+  showResult(
+    "",
+    "Checking...",
+    "",
+    qrId
+  );
 
-  document.getElementById("result").innerHTML =
-    "⏳ Checking QR code...";
-
-  await stopCamera();
-
-  const scannerName =
-    document
-      .getElementById("scannerName")
-      .value
-      .trim() || "Unknown";
-
-  checkQRWithJSONP(qrId, scannerName);
-
-}
-
-
-/* =========================
-   GOOGLE APPS SCRIPT
-   JSONP REQUEST
-========================= */
-
-function checkQRWithJSONP(qrId, scannerName) {
-
-  const callbackName =
-    "qrCallback_" +
-    Date.now() +
-    "_" +
-    Math.floor(Math.random() * 100000);
-
-  const script =
-    document.createElement("script");
-
-  let finished = false;
-
-  window[callbackName] = function(data) {
-
-    finished = true;
-
-    showResult(data);
-
-    cleanup();
-
-  };
-
-
-  function cleanup() {
-
-    if (script.parentNode) {
-      script.parentNode.removeChild(script);
-    }
-
-    try {
-      delete window[callbackName];
-    }
-    catch (e) {
-      window[callbackName] = undefined;
-    }
-
-  }
-
-
-  script.onerror = function() {
-
-    if (finished) return;
-
-    finished = true;
-
-    cleanup();
-
-    document.getElementById("result")
-      .className = "invalid";
-
-    document.getElementById("result").innerHTML =
-      "<h3>❌ CONNECTION ERROR</h3>" +
-      "<p>Could not connect to the entry system.</p>" +
-      "<p>Please check your internet connection.</p>";
-
-    document.getElementById("nextButton")
-      .classList.remove("hidden");
-
-    processing = false;
-
-  };
-
-
-  const url =
-    API_URL +
-    "?action=scan" +
-    "&qrId=" +
-    encodeURIComponent(qrId) +
-    "&scannerName=" +
-    encodeURIComponent(scannerName) +
-    "&callback=" +
-    encodeURIComponent(callbackName) +
-    "&t=" +
-    Date.now();
-
-
-  script.src = url;
-
-  document.body.appendChild(script);
-
-
-  /*
-   * Timeout protection
-   */
-
-  setTimeout(function() {
-
-    if (finished) return;
-
-    finished = true;
-
-    cleanup();
-
-    document.getElementById("result")
-      .className = "invalid";
-
-    document.getElementById("result").innerHTML =
-      "<h3>❌ CONNECTION TIMEOUT</h3>" +
-      "<p>No response from the entry system.</p>";
-
-    document.getElementById("nextButton")
-      .classList.remove("hidden");
-
-    processing = false;
-
-  }, 15000);
-
-}
-
-
-/* =========================
-   STOP CAMERA
-========================= */
-
-async function stopCamera() {
-
-  if (!scanner || !running) {
-    return;
-  }
 
   try {
 
-    await scanner.stop();
+    const url =
+      BACKEND_URL +
+      "?action=scan" +
+      "&qrId=" +
+      encodeURIComponent(qrId) +
+      "&scannerName=" +
+      encodeURIComponent(SCANNER_NAME);
+
+
+    const response =
+      await fetch(url);
+
+
+    const data =
+      await response.json();
+
+
+    if (data.status === "VALID") {
+
+      showResult(
+        "valid",
+        "✓ ENTRY ALLOWED",
+        data.name,
+        data.qrId
+      );
+
+    }
+
+    else if (data.status === "USED") {
+
+      showResult(
+        "used",
+        "✗ ALREADY USED",
+        data.name,
+        data.qrId
+      );
+
+    }
+
+    else if (data.status === "INVALID") {
+
+      showResult(
+        "invalid",
+        "✗ INVALID QR CODE",
+        data.name || "",
+        data.qrId || qrId
+      );
+
+    }
+
+    else {
+
+      showResult(
+        "error",
+        "ERROR",
+        data.message || "",
+        qrId
+      );
+
+    }
 
   }
 
-  catch(error) {
+  catch (error) {
 
-    console.log(error);
+    showResult(
+      "error",
+      "CONNECTION ERROR",
+      error.message,
+      qrId
+    );
 
   }
 
-  running = false;
 
-}
-
-
-/* =========================
-   SHOW RESULT
-========================= */
-
-function showResult(data) {
-
-  const result =
-    document.getElementById("result");
-
-
-  if (!data || !data.status) {
-
-    result.className = "invalid";
-
-    result.innerHTML =
-      "<h2>❌ SYSTEM ERROR</h2>" +
-      "<p>Invalid response from entry system.</p>";
-
-    document.getElementById("nextButton")
-      .classList.remove("hidden");
+  // Wait before allowing another scan
+  setTimeout(() => {
 
     processing = false;
 
-    return;
-  }
-
-
-  if (data.status === "VALID") {
-
-    result.className = "valid";
-
-    result.innerHTML =
-      "<h2>✅ VALID</h2>" +
-
-      "<h3>" +
-      escapeHtml(data.name) +
-      "</h3>" +
-
-      "<p>QR ID: " +
-      escapeHtml(data.qrId) +
-      "</p>" +
-
-      "<p><strong>ENTRY ACCEPTED</strong></p>" +
-
-      "<p>" +
-      escapeHtml(data.scanTime) +
-      "</p>";
-
-  }
-
-
-  else if (data.status === "USED") {
-
-    result.className = "used";
-
-    result.innerHTML =
-      "<h2>❌ ALREADY USED</h2>" +
-
-      "<h3>" +
-      escapeHtml(data.name) +
-      "</h3>" +
-
-      "<p>QR ID: " +
-      escapeHtml(data.qrId) +
-      "</p>" +
-
-      "<p>First used:</p>" +
-
-      "<strong>" +
-      escapeHtml(data.scanTime) +
-      "</strong>" +
-
-      "<p>Scanner: " +
-      escapeHtml(data.scannedBy) +
-      "</p>";
-
-  }
-
-
-  else {
-
-    result.className = "invalid";
-
-    result.innerHTML =
-      "<h2>❌ INVALID QR</h2>" +
-
-      "<p>This QR code is not registered.</p>";
-
-  }
-
-
-  document.getElementById("nextButton")
-    .classList.remove("hidden");
-
-  processing = false;
+  }, 3000);
 
 }
 
 
-/* =========================
-   HTML ESCAPING
-========================= */
+function onScanSuccess(decodedText) {
 
-function escapeHtml(text) {
+  checkQR(decodedText);
 
-  if (
-    text === null ||
-    text === undefined
-  ) {
-    return "";
-  }
-
-  return String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }
+
+
+function onScanFailure(error) {
+
+  // Ignore normal scanning failures.
+
+}
+
+
+const scanner =
+  new Html5QrcodeScanner(
+    "reader",
+    {
+      fps: 10,
+
+      qrbox: {
+        width: 250,
+        height: 250
+      },
+
+      rememberLastUsedCamera: true
+
+    },
+    false
+  );
+
+
+scanner.render(
+  onScanSuccess,
+  onScanFailure
+);
 
 </script>
 
